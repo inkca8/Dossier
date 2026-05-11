@@ -1,0 +1,22 @@
+name: dossier
+description: RPG contacts dossier with AI portrait generation via Pollinations.
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.6.0 <4.0.0"
+  flutter: ">=3.27.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  shared_preferences: ^2.2.3
+  file_picker: ^8.0.0+1
+  file_saver: ^0.2.13
+
+dev_dependencies:
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
