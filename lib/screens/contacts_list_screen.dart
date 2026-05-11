@@ -5,10 +5,12 @@ import 'package:file_picker/file_picker.dart';
 import 'package:file_saver/file_saver.dart';
 import 'package:flutter/material.dart';
 
-import '../models.dart';
-import '../repo.dart';
-import '../widgets/portrait.dart';
+import '../models/contact.dart';
+import '../services/contacts_repo.dart';
+import '../services/logger.dart';
+import '../widgets/contact_tile.dart';
 import 'contact_detail_screen.dart';
+import 'debug_log_screen.dart';
 
 class ContactsListScreen extends StatelessWidget {
   const ContactsListScreen({super.key});
@@ -25,6 +27,8 @@ class ContactsListScreen extends StatelessWidget {
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'export', child: Text('Export JSON…')),
               PopupMenuItem(value: 'import', child: Text('Import JSON…')),
+              PopupMenuDivider(),
+              PopupMenuItem(value: 'log', child: Text('Debug log…')),
             ],
           ),
         ],
@@ -38,12 +42,11 @@ class ContactsListScreen extends StatelessWidget {
         listenable: repo,
         builder: (context, _) {
           final contacts = repo.contacts;
-          if (contacts.isEmpty) {
-            return const _EmptyState();
-          }
+          if (contacts.isEmpty) return const _EmptyState();
           return LayoutBuilder(
             builder: (context, constraints) {
-              final cols = (constraints.maxWidth / 200).floor().clamp(2, 8);
+              final cols =
+                  (constraints.maxWidth / 200).floor().clamp(2, 8);
               return GridView.builder(
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -53,7 +56,8 @@ class ContactsListScreen extends StatelessWidget {
                   childAspectRatio: 0.72,
                 ),
                 itemCount: contacts.length,
-                itemBuilder: (context, i) => _ContactTile(contact: contacts[i]),
+                itemBuilder: (context, i) =>
+                    ContactTile(contact: contacts[i]),
               );
             },
           );
@@ -67,71 +71,87 @@ class ContactsListScreen extends StatelessWidget {
     await repo.upsert(c);
     if (!context.mounted) return;
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => ContactDetailScreen(contactId: c.id)),
+      MaterialPageRoute(
+        builder: (_) => ContactDetailScreen(contactId: c.id),
+      ),
     );
   }
 
   Future<void> _handleMenu(BuildContext context, String action) async {
-    if (action == 'export') {
-      final json = repo.exportJson();
-      final bytes = Uint8List.fromList(utf8.encode(json));
-      final stamp = DateTime.now().toIso8601String().substring(0, 10);
-      try {
-        await FileSaver.instance.saveFile(
-          name: 'dossier-$stamp',
-          bytes: bytes,
-          ext: 'json',
-          mimeType: MimeType.json,
+    switch (action) {
+      case 'export':
+        await _export(context);
+        break;
+      case 'import':
+        await _import(context);
+        break;
+      case 'log':
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const DebugLogScreen()),
         );
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Exported.')),
-        );
-      } catch (e) {
-        if (!context.mounted) return;
-        await _showJsonFallback(context, json);
-      }
-    } else if (action == 'import') {
-      final res = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['json'],
-        withData: true,
-      );
-      if (res == null || res.files.isEmpty) return;
-      final bytes = res.files.single.bytes;
-      if (bytes == null) return;
-      try {
-        final n = await repo.importJson(utf8.decode(bytes));
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Imported $n contact(s).')),
-        );
-      } catch (e) {
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Import failed: $e')),
-        );
-      }
+        break;
     }
   }
 
-  Future<void> _showJsonFallback(BuildContext context, String json) async {
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Export JSON'),
-        content: SizedBox(
-          width: 500,
-          child: SelectableText(json),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Close'),
+  Future<void> _export(BuildContext context) async {
+    final json = repo.exportJson();
+    final bytes = Uint8List.fromList(utf8.encode(json));
+    final stamp = DateTime.now().toIso8601String().substring(0, 10);
+    try {
+      await FileSaver.instance.saveFile(
+        name: 'dossier-$stamp',
+        bytes: bytes,
+        ext: 'json',
+        mimeType: MimeType.json,
+      );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Exported.')),
+      );
+    } catch (e, s) {
+      AppLogger.instance.warn('Export failed, falling back to dialog.', e, s);
+      if (!context.mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Export JSON'),
+          content: SizedBox(
+            width: 500,
+            child: SelectableText(json),
           ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  Future<void> _import(BuildContext context) async {
+    final res = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+      withData: true,
     );
+    if (res == null || res.files.isEmpty) return;
+    final bytes = res.files.single.bytes;
+    if (bytes == null) return;
+    try {
+      final n = await repo.importJson(utf8.decode(bytes));
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Imported $n contact(s).')),
+      );
+    } catch (e, s) {
+      AppLogger.instance.error('Import failed.', e, s);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Import failed: $e')),
+      );
+    }
   }
 }
 
@@ -165,86 +185,5 @@ class _EmptyState extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-class _ContactTile extends StatelessWidget {
-  final Contact contact;
-  const _ContactTile({required this.contact});
-
-  @override
-  Widget build(BuildContext context) {
-    final subtitle = [
-      if (contact.race.isNotEmpty) contact.race,
-      if (contact.charClass.isNotEmpty) contact.charClass,
-    ].join(' • ');
-    final scheme = Theme.of(context).colorScheme;
-
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => ContactDetailScreen(contactId: contact.id),
-          ),
-        ),
-        onLongPress: () => _confirmDelete(context),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            AspectRatio(
-              aspectRatio: 1,
-              child: Portrait(
-                contact: contact,
-                size: 1000,
-                borderRadius: BorderRadius.zero,
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    contact.name.isEmpty ? 'Unnamed' : contact.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  if (subtitle.isNotEmpty)
-                    Text(
-                      'Lv ${contact.level} $subtitle',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12, color: scheme.outline),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _confirmDelete(BuildContext context) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Delete ${contact.name.isEmpty ? "contact" : contact.name}?'),
-        content: const Text('This cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton.tonal(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (ok == true) await repo.remove(contact.id);
   }
 }

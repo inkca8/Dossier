@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../models.dart';
+import '../models/contact.dart';
+import 'safe_network_image.dart';
 
 class Portrait extends StatelessWidget {
   final Contact contact;
@@ -20,6 +21,7 @@ class Portrait extends StatelessWidget {
   Widget build(BuildContext context) {
     final radius = borderRadius ?? BorderRadius.circular(size / 8);
     final img = contact.defaultImage;
+    final scheme = Theme.of(context).colorScheme;
 
     return ClipRRect(
       borderRadius: radius,
@@ -27,41 +29,23 @@ class Portrait extends StatelessWidget {
         width: size,
         height: size,
         child: img == null
-            ? _initialsPlaceholder(context)
-            : Image.network(
-                img.url,
+            ? Container(
+                color: scheme.primaryContainer,
+                alignment: Alignment.center,
+                child: Text(
+                  contact.initials,
+                  style: TextStyle(
+                    fontSize: size * 0.4,
+                    fontWeight: FontWeight.w600,
+                    color: scheme.onPrimaryContainer,
+                  ),
+                ),
+              )
+            : SafeNetworkImage(
+                url: img.url,
                 fit: fit,
-                gaplessPlayback: true,
-                loadingBuilder: (context, child, progress) {
-                  if (progress == null) return child;
-                  return Container(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                    alignment: Alignment.center,
-                    child: const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  );
-                },
-                errorBuilder: (context, error, stack) => _initialsPlaceholder(context),
+                debugLabel: 'portrait:${contact.displayName}',
               ),
-      ),
-    );
-  }
-
-  Widget _initialsPlaceholder(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      color: scheme.primaryContainer,
-      alignment: Alignment.center,
-      child: Text(
-        contact.initials,
-        style: TextStyle(
-          fontSize: size * 0.4,
-          fontWeight: FontWeight.w600,
-          color: scheme.onPrimaryContainer,
-        ),
       ),
     );
   }

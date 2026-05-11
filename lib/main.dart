@@ -1,36 +1,67 @@
+import 'dart:async';
+import 'dart:ui';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import 'repo.dart';
-import 'screens/contacts_list_screen.dart';
+import 'app.dart';
+import 'services/contacts_repo.dart';
+import 'services/logger.dart';
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  repo = await ContactsRepo.load();
-  runApp(const DossierApp());
-}
+  runZonedGuarded<Future<void>>(() async {
+    WidgetsFlutterBinding.ensureInitialized();
 
-class DossierApp extends StatelessWidget {
-  const DossierApp({super.key});
+    FlutterError.onError = (details) {
+      AppLogger.instance.error(
+        'FlutterError: ${details.exceptionAsString()}',
+        details.exception,
+        details.stack,
+      );
+      FlutterError.presentError(details);
+    };
 
-  @override
-  Widget build(BuildContext context) {
-    const seed = Color(0xFF6B4F8E);
-    return MaterialApp(
-      title: 'Dossier',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: seed),
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: seed,
-          brightness: Brightness.dark,
+    PlatformDispatcher.instance.onError = (error, stack) {
+      AppLogger.instance.error('Uncaught async error: $error', error, stack);
+      return true;
+    };
+
+    ErrorWidget.builder = (FlutterErrorDetails details) {
+      AppLogger.instance.error(
+        'ErrorWidget: ${details.exceptionAsString()}',
+        details.exception,
+        details.stack,
+      );
+      return Material(
+        color: Colors.transparent,
+        child: Container(
+          color: const Color(0xFFFFE4E4),
+          padding: const EdgeInsets.all(12),
+          alignment: Alignment.center,
+          child: SingleChildScrollView(
+            child: Text(
+              'Widget error:\n${details.exceptionAsString()}',
+              style: const TextStyle(
+                color: Color(0xFF8B0000),
+                fontFamily: 'monospace',
+                fontSize: 11,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
         ),
-        useMaterial3: true,
-      ),
-      themeMode: ThemeMode.system,
-      home: const ContactsListScreen(),
-    );
-  }
+      );
+    };
+
+    AppLogger.instance.info('Booting Dossier…');
+    try {
+      repo = await ContactsRepo.load();
+    } catch (e, s) {
+      AppLogger.instance.error('Failed to load contacts repo.', e, s);
+      rethrow;
+    }
+    runApp(const DossierApp());
+  }, (error, stack) {
+    AppLogger.instance.error('Zone error: $error', error, stack);
+  });
 }

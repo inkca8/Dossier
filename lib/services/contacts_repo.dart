@@ -3,7 +3,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'models.dart';
+import '../models/contact.dart';
+import 'logger.dart';
 
 late ContactsRepo repo;
 
@@ -25,9 +26,12 @@ class ContactsRepo extends ChangeNotifier {
         for (final e in decoded) {
           list.add(Contact.fromJson(Map<String, dynamic>.from(e as Map)));
         }
-      } catch (e) {
-        debugPrint('Failed to load contacts: $e');
+        AppLogger.instance.info('Loaded ${list.length} contact(s).');
+      } catch (e, s) {
+        AppLogger.instance.error('Failed to decode stored contacts.', e, s);
       }
+    } else {
+      AppLogger.instance.info('No stored contacts found.');
     }
     return ContactsRepo._(prefs, list);
   }
@@ -59,8 +63,14 @@ class ContactsRepo extends ChangeNotifier {
   }
 
   Future<void> _persist() async {
-    final encoded = jsonEncode(_contacts.map((c) => c.toJson()).toList());
-    await _prefs.setString(_key, encoded);
+    try {
+      final encoded =
+          jsonEncode(_contacts.map((c) => c.toJson()).toList());
+      await _prefs.setString(_key, encoded);
+    } catch (e, s) {
+      AppLogger.instance.error('Failed to persist contacts.', e, s);
+      rethrow;
+    }
   }
 
   String exportJson() {
@@ -87,6 +97,7 @@ class ContactsRepo extends ChangeNotifier {
     }
     await _persist();
     notifyListeners();
+    AppLogger.instance.info('Imported ${incoming.length} contact(s).');
     return incoming.length;
   }
 }
